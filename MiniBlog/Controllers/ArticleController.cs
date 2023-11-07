@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MiniBlog.Model;
+using MiniBlog.Services;
 using MiniBlog.Stores;
 
 namespace MiniBlog.Controllers
@@ -13,43 +14,30 @@ namespace MiniBlog.Controllers
     [Route("[controller]")]
     public class ArticleController : ControllerBase
     {
-        private readonly ArticleStore articleStore = null!;
-        private readonly UserStore userStore = null!;
+        private readonly ArticleService articleService = null!;
 
-        public ArticleController(ArticleStore articleStore, UserStore userStore)
+        public ArticleController(ArticleService articleService)
         {
-            this.articleStore = articleStore;
-            this.userStore = userStore;
+            this.articleService = articleService;
         }
 
         [HttpGet]
-        public List<Article> List()
+        public async Task<List<Article>> ListAsync()
         {
-            Console.WriteLine(articleStore.Articles);
-            return articleStore.Articles;
+            return await this.articleService.GetAllAsync();
         }
 
         [HttpPost]
-        public IActionResult Create(Article article)
+        public async Task<IActionResult> CreateAsync(Article article)
         {
-            if (article.UserName != null)
-            {
-                if (!userStore.Users.Exists(_ => article.UserName == _.Name))
-                {
-                    userStore.Users.Add(new User(article.UserName));
-                }
-
-                articleStore.Articles.Add(article);
-            }
-
-            return CreatedAtAction(nameof(GetById), new { id = article.Id }, article);
+            var added = await this.articleService.CreateArticleAsync(article);
+            return Created(string.Empty, added);
         }
 
         [HttpGet("{id}")]
-        public Article GetById(Guid id)
+        public async Task<Article> GetByIdAsync(string id)
         {
-            var foundArticle = articleStore.Articles.FirstOrDefault(article => article.Id == id);
-            return foundArticle;
+            return await this.articleService.GetByIdAsync(id);
         }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Net.Mime;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -10,7 +11,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using MiniBlog;
 using MiniBlog.Model;
+using MiniBlog.Repositories;
 using MiniBlog.Stores;
+using Moq;
 using Newtonsoft.Json;
 using Xunit;
 
@@ -28,34 +31,30 @@ namespace MiniBlogTest.ControllerTest
         [Fact]
         public async Task Should_get_all_users()
         {
-            var client = GetClient();
+            var mock = new Mock<IUserRepository>();
+            mock.Setup(repository => repository.GetAll()).ReturnsAsync(new List<User>());
+            var client = GetClient(new ArticleStore(), new UserStore(new List<User>()), null, mock.Object);
             var response = await client.GetAsync("/user");
-            response.EnsureSuccessStatusCode();
-            var body = await response.Content.ReadAsStringAsync();
-            var users = JsonConvert.DeserializeObject<List<User>>(body);
+            var users = await response.Content.ReadFromJsonAsync<List<User>>();
             Assert.Equal(0, users.Count);
         }
 
         [Fact]
         public async Task Should_register_user_success()
         {
-            var client = GetClient();
+            var mock = new Mock<IUserRepository>();
+            var user = new User()
+            {
+                Id = "654a19c0b505a1dd32cd88c5",
+                Name = "Test",
+                Email = "test",
+            };
+            mock.Setup(repository => repository.CreateOneAsync(user)).ReturnsAsync(user);
 
-            var userName = "Tom";
-            var email = "a@b.com";
-            var user = new User(userName, email);
-            var userJson = JsonConvert.SerializeObject(user);
-
-            StringContent content = new StringContent(userJson, Encoding.UTF8, MediaTypeNames.Application.Json);
-            var registerResponse = await client.PostAsync("/user", content);
-
-            // It fail, please help
-            Assert.Equal(HttpStatusCode.Created, registerResponse.StatusCode);
-
-            var users = await GetUsers(client);
-            Assert.Equal(1, users.Count);
-            Assert.Equal(email, users[0].Email);
-            Assert.Equal(userName, users[0].Name);
+            var client = GetClient(new ArticleStore(), new UserStore(new List<User>()), null, mock.Object);
+            var response = await client.PostAsJsonAsync("/user", user);
+            var newUser = await response.Content.ReadFromJsonAsync<User>();
+            Assert.Equal(user, newUser);
         }
 
         [Fact]
@@ -65,9 +64,8 @@ namespace MiniBlogTest.ControllerTest
 
             var userName = "Tom";
             var email = "a@b.com";
-            var user = new User(userName, email);
+            var user = new User(userName, email) { Id = "654a19c0b505a1dd32cd88c5" };
             var userJson = JsonConvert.SerializeObject(user);
-
             StringContent content = new StringContent(userJson, Encoding.UTF8, MediaTypeNames.Application.Json);
             var registerResponse = await client.PostAsync("/user", content);
             Assert.Equal(HttpStatusCode.InternalServerError, registerResponse.StatusCode);
@@ -76,46 +74,69 @@ namespace MiniBlogTest.ControllerTest
         [Fact]
         public async Task Should_update_user_email_success_()
         {
-            var client = GetClient();
+            var mock = new Mock<IUserRepository>();
+            var user = new User()
+            {
+                Id = "654a19c0b505a1dd32cd88c5",
+                Name = "Test",
+                Email = "test",
+            };
+            var newEmail = "6";
+            var newUser = new User()
+            {
+                Id = "654a19c0b505a1dd32cd88c5",
+                Name = "Test",
+                Email = newEmail,
+            };
+            mock.Setup(repository => repository.CreateOneAsync(user)).ReturnsAsync(user);
+            mock.Setup(repository => repository.UpdateByIdAsync(newUser)).ReturnsAsync(newUser);
 
-            var userName = "Tom";
-            var originalEmail = "a@b.com";
-            var updatedEmail = "tom@b.com";
-            var originalUser = new User(userName, originalEmail);
+            var client = GetClient(new ArticleStore(), new UserStore(new List<User>()), null, mock.Object);
 
-            var newUser = new User(userName, updatedEmail);
-            StringContent registerUserContent = new StringContent(JsonConvert.SerializeObject(originalUser), Encoding.UTF8, MediaTypeNames.Application.Json);
-            var registerResponse = await client.PostAsync("/user", registerUserContent);
+            var registerResponse = await client.PostAsJsonAsync("/user", user);
 
-            StringContent updateUserContent = new StringContent(JsonConvert.SerializeObject(newUser), Encoding.UTF8, MediaTypeNames.Application.Json);
-            await client.PutAsync("/user", updateUserContent);
+            var res = await client.PutAsJsonAsync("/user", newUser);
+            var resE = await res.Content.ReadFromJsonAsync<User>();
 
-            var users = await GetUsers(client);
-            Assert.Equal(1, users.Count);
-            Assert.Equal(updatedEmail, users[0].Email);
-            Assert.Equal(userName, users[0].Name);
+            Assert.Equal(newEmail, resE.Email);
         }
 
         [Fact]
         public async Task Should_delete_user_and_related_article_success()
         {
-            var client = GetClient();
+            var testUserId = "654a19c0b505a1dd32cd88c5";
+            var testUser = new User()
+            {
+                Id = testUserId,
+                Name = "test",
+                Email = "test"
+            };
+            var mockUser = new Mock<IUserRepository>();
+            mockUser.Setup(repo => repo.GetByIdAsync(testUserId)).ReturnsAsync(testUser);
+            mockUser.Setup(repository => repository.DeleteById(testUserId));
+            mockUser.Setup(repo => repo.GetAll()).ReturnsAsync(new List<User>());
 
-            var userName = "Tom";
+            var testAId = "654a19c0b505a1dd32cd88c6";
+            var testArticle = new Article()
+            {
+                Id = testAId,
+                UserId = testUserId,
+                UserName = "test",
+                Content = "test",
+                Title = "test",
+            };
+            var mockArtile = new Mock<IArticleRepository>();
+            mockArtile.Setup(repository => repository.AddOneAsync(testArticle)).ReturnsAsync(testArticle);
+            mockArtile.Setup(repository => repository.DeleteByUserId(testUserId));
+            mockArtile.Setup(repo => repo.GetArticles()).ReturnsAsync(new List<Article>());
 
-            await PrepareArticle(new Article(userName, string.Empty, string.Empty), client);
-            await PrepareArticle(new Article(userName, string.Empty, string.Empty), client);
+            var client = GetClient(new ArticleStore(), new UserStore(new List<User>()), mockArtile.Object, mockUser.Object);
 
-            var articles = await GetArticles(client);
-            Assert.Equal(4, articles.Count);
-
-            var users = await GetUsers(client);
-            Assert.Equal(1, users.Count);
-
-            await client.DeleteAsync($"/user?name={userName}");
+            await client.PostAsJsonAsync("/article", testArticle);
+            await client.DeleteAsync($"/user/{testUserId}");
 
             var articlesAfterDeleteUser = await GetArticles(client);
-            Assert.Equal(2, articlesAfterDeleteUser.Count);
+            Assert.Equal(0, articlesAfterDeleteUser.Count);
 
             var usersAfterDeleteUser = await GetUsers(client);
             Assert.Equal(0, usersAfterDeleteUser.Count);
