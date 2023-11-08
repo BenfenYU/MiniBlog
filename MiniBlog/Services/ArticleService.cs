@@ -22,27 +22,14 @@ namespace MiniBlog.Services
 
         public async Task<Article> CreateArticleAsync(Article article)
         {
-            //if (!ObjectId.TryParse(article.Id, out ObjectId _))
-            //{
-            //    return null;
-            //}
+            var user = await userRepository.GetByIdAsync(article.UserId);
 
-            article.Id = ObjectId.GenerateNewId().ToString();
-            if (article.UserId != null && ObjectId.TryParse(article.UserId, out ObjectId _))
-            {
-                var user = await userRepository.GetByIdAsync(article.UserId);
-
-                if (user == null)
+            if (user == null)
                 {
                     user = await userRepository.CreateOneAsync(new User(article.UserName));
                 }
 
-                article.UserId = user.Id;
-            }
-            else
-            {
-                article.UserId = null;
-            }
+            article.UserId = user.Id;
 
             article = await articleRepository.AddOneAsync(article);
             

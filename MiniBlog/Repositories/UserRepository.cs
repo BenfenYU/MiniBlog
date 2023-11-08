@@ -1,5 +1,7 @@
 ﻿using MiniBlog.Model;
+using MongoDB.Bson;
 using MongoDB.Driver;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -24,6 +26,11 @@ namespace MiniBlog.Repositories
 
         public async Task<User> GetByIdAsync(string id)
         {
+            if (!ObjectId.TryParse(id, out var _))
+            {
+                return null;
+            }
+
             var user = await users.FindAsync(u => u.Id == id);
 
             return await user.FirstOrDefaultAsync();
@@ -31,6 +38,11 @@ namespace MiniBlog.Repositories
 
         public async Task<User> CreateOneAsync(User user)
         {
+            if (user.Id == null || !ObjectId.TryParse(user.Id, out var _))
+            {
+                user.Id = ObjectId.GenerateNewId().ToString();
+            }
+
             await users.InsertOneAsync(user);
 
             return user;

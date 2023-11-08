@@ -32,15 +32,14 @@ namespace MiniBlog
             services.AddControllers();
             services.AddSwaggerGen();
 
-            services.AddSingleton<ArticleStore>(new ArticleStore());
-            services.AddSingleton<UserStore>(new UserStore());
-            services.AddScoped<ArticleService>();
-            services.AddScoped<UserService>();
-
             var mongoClient = new MongoClient(Configuration.GetConnectionString("MongoDB"));
             services.AddSingleton<IMongoClient>(mongoClient);
-            services.AddScoped<ArticleRepository>();
-            services.AddScoped<UserRepository>();
+
+            services.AddScoped<IArticleRepository, ArticleRepository>();
+            services.AddScoped<IUserRepository, UserRepository>();
+
+            services.AddScoped<ArticleService>();
+            services.AddScoped<UserService>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
